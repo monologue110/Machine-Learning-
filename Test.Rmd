@@ -1,0 +1,35 @@
+---
+title: "Untitled"
+author: "Luxi Li"
+date: "3/25/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(mvtnorm)
+set.seed(9)
+sig <- matrix(c(9, 5, 5, 4), nrow = 2)
+x <- rmvnorm(200, sigma = sig, mean = c(20,40))
+```
+
+```{r}
+x.1 = scale(x)
+```
+
+
+```{r}
+e = eigen(cov(x.1))
+Q =  eigen(cov(x.1))$vectors
+```
+
+```{r}
+
+
+Q%*%diag(e)%*%t(Q)
+```
+
