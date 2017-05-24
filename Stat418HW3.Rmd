@@ -1,6 +1,5 @@
 ---
 title: "Stat418 HW3"
-author: "Luxi Li"
 date: "5/17/2017"
 output: html_document
 ---
@@ -13,27 +12,26 @@ The goal is to predict whether income exceeds $50K/yr based on census salary dat
 
 Here is varaible information about the data set:
 
-*age: The age of the individual
-*workclass: The type of employer the individual has. 
-*fnlwgt: Number of people the census takers believe that observation represents.
-*education: Highest level of education achieved for that individual
-*education_num: Number of years of education
-*marital: Marital status of the individual
-*occupation: Occupation of the individual
-*relationship: Contains family relationship values
-*race: descriptions of the individuals race. 
-*capital_gain: Capital gains 
-*capital_loss: Capital Losses 
-*hours_per_week: Hours worked per week
-*native_country: Country of origin for person
-*salary_level: Boolean Variable. Whether or not the person makes more than $50,000 per annum income.
+* age: The age of the individual
+* workclass: The type of employer the individual has. 
+* fnlwgt: Number of people the census takers believe that observation represents.
+* education: Highest level of education achieved for that individual
+* education_num: Number of years of education
+* marital: Marital status of the individual
+* occupation: Occupation of the individual
+* relationship: Contains family relationship values
+* race: descriptions of the individuals race. 
+* capital_gain: Capital gains 
+* capital_loss: Capital Losses 
+* hours_per_week: Hours worked per week
+* native_country: Country of origin for person
+* salary_level: Boolean Variable. Whether or not the person makes more than $50,000 per annum income.
 
 
 I try some machine learning algorithms, such as Logistic Regression, Random Forest and Generalized Boosted Regression.
 
 
 ```{r}
-setwd("~/Desktop/STAT 418/Stat418HW3")
 data = read.csv("~/Desktop/Stat418HW3/adult.data.txt", header = FALSE, fill = TRUE)
 data.1 = read.csv("~/Desktop/Stat418HW3/adult.test.txt", header = FALSE, fill = TRUE)
 
