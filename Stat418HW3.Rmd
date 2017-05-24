@@ -1,5 +1,6 @@
 ---
 title: "Stat418 HW3"
+author: "Luxi Li"
 date: "5/17/2017"
 output: html_document
 ---
@@ -32,6 +33,7 @@ I try some machine learning algorithms, such as Logistic Regression, Random Fore
 
 
 ```{r}
+setwd("~/Desktop/STAT 418/Stat418HW3")
 data = read.csv("~/Desktop/Stat418HW3/adult.data.txt", header = FALSE, fill = TRUE)
 data.1 = read.csv("~/Desktop/Stat418HW3/adult.test.txt", header = FALSE, fill = TRUE)
 

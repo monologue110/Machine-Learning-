@@ -127,7 +127,22 @@ $(document).ready(function () {
 <h3>Part 1. Data Loading:</h3>
 <p>Dataset is from UCI Machine Learning Repository. Website: <a href="https://archive.ics.uci.edu/ml/machine-learning-databases/adult/" class="uri">https://archive.ics.uci.edu/ml/machine-learning-databases/adult/</a> The goal is to predict whether income exceeds $50K/yr based on census salary dataset.</p>
 <p>Here is varaible information about the data set:</p>
-<p><em>age: The age of the individual </em>workclass: The type of employer the individual has. <em>fnlwgt: Number of people the census takers believe that observation represents. </em>education: Highest level of education achieved for that individual <em>education_num: Number of years of education </em>marital: Marital status of the individual <em>occupation: Occupation of the individual </em>relationship: Contains family relationship values <em>race: descriptions of the individuals race. </em>capital_gain: Capital gains <em>capital_loss: Capital Losses </em>hours_per_week: Hours worked per week <em>native_country: Country of origin for person </em>salary_level: Boolean Variable. Whether or not the person makes more than $50,000 per annum income.</p>
+<ul>
+<li>age: The age of the individual</li>
+<li>workclass: The type of employer the individual has.</li>
+<li>fnlwgt: Number of people the census takers believe that observation represents.</li>
+<li>education: Highest level of education achieved for that individual</li>
+<li>education_num: Number of years of education</li>
+<li>marital: Marital status of the individual</li>
+<li>occupation: Occupation of the individual</li>
+<li>relationship: Contains family relationship values</li>
+<li>race: descriptions of the individuals race.</li>
+<li>capital_gain: Capital gains</li>
+<li>capital_loss: Capital Losses</li>
+<li>hours_per_week: Hours worked per week</li>
+<li>native_country: Country of origin for person</li>
+<li>salary_level: Boolean Variable. Whether or not the person makes more than $50,000 per annum income.</li>
+</ul>
 <p>I try some machine learning algorithms, such as Logistic Regression, Random Forest and Generalized Boosted Regression.</p>
 <pre class="r"><code>setwd(&quot;~/Desktop/STAT 418/Stat418HW3&quot;)
 data = read.csv(&quot;~/Desktop/Stat418HW3/adult.data.txt&quot;, header = FALSE, fill = TRUE)
