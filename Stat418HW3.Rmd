@@ -1,0 +1,425 @@
+---
+title: "Stat418 HW3"
+author: "Luxi Li"
+date: "5/17/2017"
+output: html_document
+---
+###Part 1. Data Loading:
+
+Dataset is from UCI Machine Learning Repository.
+Website: https://archive.ics.uci.edu/ml/machine-learning-databases/adult/
+The goal is to predict whether income exceeds $50K/yr based on census salary dataset.
+
+
+Here is varaible information about the data set:
+
+*age: The age of the individual
+*workclass: The type of employer the individual has. 
+*fnlwgt: Number of people the census takers believe that observation represents.
+*education: Highest level of education achieved for that individual
+*education_num: Number of years of education
+*marital: Marital status of the individual
+*occupation: Occupation of the individual
+*relationship: Contains family relationship values
+*race: descriptions of the individuals race. 
+*capital_gain: Capital gains 
+*capital_loss: Capital Losses 
+*hours_per_week: Hours worked per week
+*native_country: Country of origin for person
+*salary_level: Boolean Variable. Whether or not the person makes more than $50,000 per annum income.
+
+
+I try some machine learning algorithms, such as Logistic Regression, Random Forest and Generalized Boosted Regression.
+
+
+```{r}
+setwd("~/Desktop/STAT 418/Stat418HW3")
+data = read.csv("~/Desktop/Stat418HW3/adult.data.txt", header = FALSE, fill = TRUE)
+data.1 = read.csv("~/Desktop/Stat418HW3/adult.test.txt", header = FALSE, fill = TRUE)
+
+colnames(data) = c("age", "workclass", "fnlwgt", "educaton","education_num", 
+                   "marital_status", "occupation",
+                   "relationship","race", "sex","capital_gain","capital_loss",
+                   "hours_per_week", "native_country", "salary_level")
+
+colnames(data.1) = c("age", "workclass", "fnlwgt", "educaton","education_num", 
+                   "marital_status", "occupation",
+                   "relationship","race", "sex","capital_gain","capital_loss",
+                   "hours_per_week", "native_country", "salary_level")
+data.1 = data.1[-1,]
+data.1$salary_level = as.character(data.1$salary_level)
+data.1$salary_level[data.1$salary_level == " <=50K."] = " <=50K"
+data.1$salary_level[data.1$salary_level == " >50K."] = " >50K"
+data.1$salary_level = as.factor(data.1$salary_level)
+
+total = rbind(data, data.1)
+```
+
+
+Since the adult data is separated to two text files, I combine them together and then clean data at next part.
+
+
+###Part 2 Data Cleaning:
+Looking into summary of the data set, age is in type of character, which should be numeric, and some variables are already in type of factors.
+
+```{r}
+summary(total)
+```
+
+I find that the data include some NA values showing as "?", and the occurrences of "?" in each column is:
+```{r}
+for (i in c(1:dim(total)[2])){
+ print(rbind(names(total)[i], sum(as.character(total[,i]) ==" ?" ) / nrow(total)))
+}
+
+```
+
+I get that workclass has 5.6% of "?", native country of 1.8%, and occupation as 5.7% in total.
+These three columns are all categorical vairbales.
+Then, I remove all the rows of "?"
+```{r}
+total = total[as.character(total$workclass) != " ?",]
+total = total[as.character(total$occupation) != " ?",]
+total = total[as.character(total$native_country) != " ?",]
+dim(total)
+```
+
+Now I get the data exclude all NA values.
+
+I remove education_num and fnlwgt, since education_num and education are same implementation which is correlated and fnlwgt final weight estimate refers to population totals so it is diminished impact on salary level:
+
+```{r}
+total$fnlwgt = NULL
+total$education_num = NULL
+```
+
+Then, split the data to train and test data set for future prediction. I use train data to get model, and cross validation, then use test data to predict salary level. Higher accuracy means better model fitted.
+
+```{r}
+set.seed(100)
+spec = c(train = .6, test = .4)
+
+g = sample(cut(
+  seq(nrow(total)), 
+  nrow(total)*cumsum(c(0,spec)),
+  labels = names(spec)
+))
+res = split(total, g)
+addmargins(prop.table(table(g)))
+
+train = res$train
+test = res$test
+```
+
+I split the data in 6:4, which means that 60 percent of data to train data and left as test data.
+
+Now I get the cleaned train and test data.
+
+###Part 3 Exploratory Analysis:
+
+Looking into age,which has wide range and variability. The distribution and mean are quite different for income level <=50K and >50K, implying that age will be a good predictor of salary level:
+```{r}
+train$age = as.numeric(train$age)
+```
+
+
+```{r}
+library(gridExtra)
+library(grid)
+library(ggplot2)
+library(lattice)
+below = (train$salary_level == " <=50K")
+
+hist1 = qplot (age, data = train[below,], margins = TRUE, 
+           binwidth = 2, xlim = c (min (train$age), max (train$age)), ylim = c (0, 1600), colour = salary_level)
+
+hist2 = qplot (age, data = train[!below,], margins = TRUE, 
+           binwidth = 2, xlim = c (min (train$age), max (train$age)), ylim = c (0, 1600), colour = salary_level)
+
+grid.arrange (hist1, hist2, nrow = 2)
+```
+
+This two histogram also shows that age is important variable to the model.
+
+The below shows that there is no correlation between the continuous variables and that they are independent of each other:
+
+```{r}
+corMat = cor (train[, c("age",  "capital_gain", "capital_loss", "hours_per_week")])
+diag (corMat) = 0 
+corMat
+```
+
+
+Variable sex may not be good fit for the model since male distributed large percent on total that in both salary level so sex may not influence too much on salary level.
+```{r}
+table (train[,c("sex", "salary_level")])
+```
+
+Next, I check the variables that are factors
+```{r}
+dim(train)
+for (i in c(1:13)){
+ print(is.factor(train[,i]))
+}
+```
+
+Following is the columns that are numeric variables: 
+```{r}
+colnames(train)[c(1,9:11)]
+```
+
+Then, I apply logistic regression in next part.
+
+###Part 4 Logistic Regression:
+
+To apply glmnet function, I transform dependent variables to a matrix.
+Set alpha as 1, Lasso Regression is used.
+The plot shows that with different lambda, how the coefficients distribute.
+```{r}
+library(Matrix)
+library(foreach)
+library(glmnet)
+library(ROCR)
+
+age= train$age
+workclass= train$workclass
+educaton= train$educaton
+marital_status= train$marital_status
+occupation= train$occupation
+relationship= train$relationship
+race= train$race
+sex= train$sex
+capital_gain= train$capital_gain
+capital_loss= train$capital_loss
+hours_per_week= train$hours_per_week
+native_country= train$native_country
+salary_level= as.numeric(train$salary_level)
+salary_level[salary_level == "1"] = 0
+salary_level[salary_level == "2"] = 1
+
+xfactors = model.matrix(salary_level ~ workclass+educaton+educaton+marital_status+
+                       occupation +relationship+race+sex+native_country )[, -1]
+
+x = as.matrix(data.frame(age, capital_gain, capital_loss, hours_per_week, xfactors))
+
+model = glmnet(x, y= as.factor(salary_level), family = "binomial", alpha  = 1)
+
+plot(model, xvar="lambda")
+```
+
+From the plot, coefficients tend to 0 when lambda is close to 0.
+In order to get best lambda, apply cross validation to train data.
+```{r}
+cv.model = cv.glmnet(x, y=salary_level, alpha=1)
+plot(cv.model)
+(best.lambda = cv.model$lambda.min)
+```
+
+
+From the plot, left vertical line shows when the CV-error curve hits its minimum. The right vertical line shows the most regularized model with CV-error within 1 standard deviation of the minimum. I also extract optimal lambda.
+
+```{r}
+fit  = glmnet(x, y = salary_level, alpha = 1, lambda = best.lambda  ) 
+```
+
+Then, I use test data to get AUC rate.
+
+Same as previous steps, I get a matrix-formed data and then apply them to model.
+```{r}
+library(Matrix)
+library(foreach)
+library(glmnet)
+library(ROCR)
+
+test$age = as.numeric(test$age)
+
+age.1= test$age
+workclass.1= test$workclass
+educaton.1= test$educaton
+marital_status.1= test$marital_status
+occupation.1= test$occupation
+relationship.1= test$relationship
+race.1= test$race
+sex.1= test$sex
+capital_gain.1= test$capital_gain
+capital_loss.1= test$capital_loss
+hours_per_week.1= test$hours_per_week
+native_country.1= test$native_country
+salary_level.1= as.numeric(test$salary_level)
+salary_level.1[salary_level.1 == "1"] = 0
+salary_level.1[salary_level.1 == "2"] = 1
+
+xfactors.1 = model.matrix(salary_level.1 ~ workclass.1+educaton.1+educaton.1+marital_status.1+
+                       occupation.1 +relationship.1+race.1+sex.1+native_country.1 )[, -1]
+
+x.1 = as.matrix(data.frame(age.1, capital_gain.1, capital_loss.1, hours_per_week.1, xfactors.1))
+```
+
+Make prediction and show how the model works.
+```{r}
+phat =  predict(fit, newx = x.1, type = "response")
+
+rocr_pred = prediction(phat, salary_level.1)
+
+table(test$salary_level, ifelse(phat>0.5,1,0))
+(12761 + 2287)/nrow(test)
+
+performance(rocr_pred, "auc")@y.values[[1]]
+
+```
+
+AUC rate is 88 percent, while accuracy rate is 83 percent.
+
+Then, I draw ROC curve. The curve close to the left-hand and top border of the ROC space.
+
+```{r}
+library(ggplot2)
+plot(performance(rocr_pred, "tpr", "fpr"))
+```
+
+###Part 5 Random Forest:
+After doing regression method, I try classification method.
+
+I first use tuneRF to find out optimal number of variables randomly sampled as candidates at each split(mtry).
+
+ntreeTry specifies the number of trees to make using this function. By trying out different numbers for mtry, I get same result that optimized mtry is 4.
+
+```{r, message=FALSE}
+set.seed(100)
+library(randomForest)
+library(ROCR)
+bestmtry = tuneRF(train[,-13],train$salary_level, ntreeTry=100, 
+     stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE, dobest=FALSE)
+
+#bestmtry.1 = tuneRF(train[,-13],train$salary_level, ntreeTry=400, stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE, dobest=FALSE)
+#bestmtry.1 = tuneRF(train[,-13],train$salary_level, ntreeTry=200, stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE, dobest=FALSE)
+#bestmtry.1 = tuneRF(train[,-13],train$salary_level, ntreeTry=500, stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE, dobest=FALSE)
+```
+
+Then, use random forest to train data:
+
+```{r}
+rf = randomForest(salary_level ~ .,data= train, mtry=4, ntree=1000)
+```
+
+Finally, we can evaluate the performance of the random forest for classification. 
+
+```{r}
+library(lattice)
+library(ggplot2)
+library(ROCR)
+library(gplots)
+rf.pr = predict(rf,type="prob",newdata=test)[,2]
+rf.pred = prediction(rf.pr, test$salary_level)
+rf.perf = performance(rf.pred,"tpr","fpr")
+performance(rf.pred, "auc")@y.values[[1]]
+a = table(ifelse(rf.pr>0.5,1,0), test$salary_level)
+(a[1,1] + a[2,2]) / nrow(test)
+plot(rf.perf,col=2,lwd=2)
+```
+
+We get the AUC rate of 87 percent, accuracy rate is 82 percent.
+
+Then, I evaluate what variables are most important in generating the forest.
+
+```{r}
+importance(rf)
+varImpPlot(rf)
+```
+
+The plot shows that the most important variables included age, capital gain, education, marital status and relationship. Variables like race and sex are less important.
+
+Next, I try Gradient Boosting by using Xgboost package.
+
+
+###Part 6 Gradient Boosting Trees:
+Since Xgboost manages only numeric vectors, I use the transformed matrix data in model.
+
+At first, I try xgboost function which is a simpler interface compared to xgb.train.
+```{r}
+library(xgboost)
+library(ROCR)
+n_proc = parallel::detectCores()
+md = xgboost(data = x, label = salary_level,
+                nthread = n_proc, nround = 1, max_depth = 10,
+                num_parallel_tree = 500, subsample = 0.5,
+                colsample_bytree = 0.7,
+                save_period = NULL)
+
+phat.xgboost = predict(md, newdata = x.1)
+
+rocr_pred = prediction(phat.xgboost, salary_level.1)
+
+performance(rocr_pred, "auc")@y.values[[1]] #0.91
+
+table(test$salary_level, ifelse(phat.xgboost>0.5,1,0))
+(12748 + 2724)/nrow(test)
+perf = performance(rocr_pred,"tpr","fpr")
+plot(perf,col=2,lwd=2)
+```
+The fitted model prediction AUC rate is 91 percent, and accuracy rate is 86 percent.
+
+```{r,warning = FALSE}
+set.seed(100)
+library(xgboost)
+dtrain <- xgb.DMatrix(data = x,label = salary_level) 
+dtest <- xgb.DMatrix(data = x.1,label= salary_level.1)
+
+params <- list(booster = "gbtree", objective = "binary:logistic", eta=0.3, gamma=0, max_depth=6, min_child_weight=1, subsample=1, colsample_bytree=1)
+
+xgbcv <- xgb.cv( params = params, data = dtrain, nrounds = 100, nfold = 5, showsd = T, stratified = T, print.every.n = 10, early.stop.round = 10, maximize = F)
+```
+
+```{r, warning = FALSE}
+xgb1 <- xgb.train (params = params, data = dtrain, nrounds = 37, watchlist = list(val=dtest,train=dtrain), print.every.n = 10, early.stop.round = 10, maximize = F , eval_metric = "error")
+
+phat.gbm = predict(xgb1, newdata = x.1)
+
+rocr_pred_1 = prediction(phat.gbm, salary_level.1)
+performance(rocr_pred_1, "auc")@y.values[[1]]
+
+table(test$salary_level, ifelse(phat.gbm>0.5,1,0))
+(12768 + 2857)/nrow(test)
+
+perf = performance(rocr_pred_1,"tpr","fpr")
+plot(perf,col=2,lwd=2)
+```
+
+With AUC rate of 92 percent and accuracy rate of 86 percent, this model performes better.
+
+```{r}
+xgb_param_adult = list(
+  nrounds = c(700),
+  eta = 0.057,#eta between(0.01-0.2)
+  max_depth = 4, #values between(3-10)
+  subsample = 0.7,#values between(0.5-1)
+  colsample_bytree = 0.7,#values between(0.5-1)
+  num_parallel_tree=1,
+  objective='binary:logistic',
+  min_child_weight = 1,
+  booster='gbtree'
+)
+
+xgb.fit = xgb.train(xgb_param_adult, dtrain, 500)
+
+preds = predict(xgb.fit, newdata=x.1)
+table(test$salary_level, ifelse(preds>0.5,1,0))
+(12727 + 2929)/nrow(test)
+
+rocr_pred.2 <- prediction(preds, salary_level.1)
+performance(rocr_pred.2, "auc")@y.values[[1]]
+
+perf = performance(rocr_pred.2 ,"tpr","fpr")
+plot(perf,col=2,lwd=2)
+```
+With AUC rate of 93 percent and accuracy rate of 87 percent, this model performes slightly better than last one.
+
+
+###Part 8 Conclusion:
+In this project, I approach several models and implement them on a classifier dataset, addressing several issues like hyper-parameters tuning to ultimately boosting accuracy of models. Ultimately, xgboost performes best. XGBOOST performes amazingly especially upon hyper- parameter tuning.
+
+
+
+
+
+
