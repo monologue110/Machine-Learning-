@@ -1,9 +1,4 @@
----
-title: "Stat418 HW3"
-author: "Luxi Li"
-date: "5/17/2017"
-output: html_document
----
+
 ###Part 1. Data Loading:
 
 Dataset is from UCI Machine Learning Repository.
