@@ -1,0 +1,685 @@
+---
+title: "Adult Data Machine Learning Analysis"
+date: "6/5/2017"
+output: html_document
+---
+
+In this project, I furthur investigate the models using supervised learning and unsupervised learning.
+
+Before moving into supervised learning, I save the train and test data from last project as csv file, so that it is easier to be loaded into h2o package.
+
+```{r}
+#write.csv(train, file = "~/Desktop/train.csv", row.names = F)
+#write.csv(test, file = "~/Desktop/test.csv", row.names = F)
+```
+
+
+###Part1: Neural Network
+
+Unlike the neural networks of the past, modern Deep Learning provides training stability, generalization, and scalability with big data. Since it performs quite well in a number of diverse problems, Deep Learning is quickly becoming the algorithm of choice for the highest predictive accuracy.
+
+In deep learning algorithm, there exist 3 layers: input layer, hidden layer and output layer. It works as follows, At first, feed data to input layer. It then transmits the data to hidden layer. These hidden layer comprises of neurons. These neurons uses some function and assist in mapping non-linear relationship among the variables.The hidden layers are user specified. Finally, these hidden layers delivers the output to output layer which then gives out the result.
+
+```{r,results='hide', message=F, warning=F}
+library(h2o)
+h2o.init(nthreads=-1, max_mem_size="2G")
+h2o.removeAll()
+train.1 <- h2o.importFile(path = normalizePath("../Desktop/train.csv"))
+test.1  <- h2o.importFile(path = normalizePath("../Desktop/test.csv"))
+set.seed(1234567)
+dx_split <- h2o.splitFrame(test.1, ratios = 0.5, seed = 123)
+valid.1 <- dx_split[[1]]
+test.1 <- dx_split[[2]]
+```
+
+* H2O's Deep Learning Architecture:
+
+     H2O’s Deep Learning functionalities include:
+
+1.  optional specification of learning rate, annealing, and momentum options
+2.  regularization options such as L1, L2 and model averaging to prevent model overfitting
+3.  grid search for hyperparameter optimization and model selection
+4.  automatic early stopping based on convergence of user-specified metrics to user-specified tolerance
+5.  model checkpointing for reduced run times and model tuning
+
+
+     H2o's important parameters meaning:
+
+1. hidden: Number of hidden layers and number of neurons in each layer in the architechture.
+2. epochs: Number of iterations to be done on the data set.
+3. activation: Type of activation function to use. In h2o, the major activation functions are Tanh, Rectifier, and Maxout.
+4.l1 and l2: regularization, add stability and improve generalization, cases many weights to become 0.
+5. momentum: Add a fraction of previous update to current one. When the gradient keeps pointing in the same direction, this will increase the size of the steps taken towards the minimum, and this will reduce global learning rate when using a lot of momentum 
+
+
+Now move on to train the model without hidden layer:
+
+```{r, message=F, warning=F}
+#set variables
+y <- "salary_level"
+x <- setdiff(colnames(train.1),y)
+```
+
+
+```{r, message=F, warning=F}
+#train the model - without hidden layer
+system.time({
+deepmodel <- h2o.deeplearning(x = x
+                            ,y = y
+                            ,training_frame = train.1
+                            , validation_frame = valid.1
+                            ,standardize = T
+                            ,model_id = "deep_model"
+                            ,activation = "Rectifier"
+                            ,epochs = 100
+                            ,stopping_rounds = 2
+                            , stopping_metric = "AUC"
+                            , stopping_tolerance = 0
+                            ,variable_importances = T)
+})
+```
+
+
+I use system.time() for calculatiing the total time of running the model. First two entries are the total user and system CPU times of the current process and any child processes on which it has waited, and third entry is the real elapsed time since the process was started. Thus, this model takes real time around 45 seconds.
+
+Following plot shows the variable importance of the data. It seems like male, capital gain, United States, married with spouse, and white people are the most important variables from Adult dataset that they have more earning than others.
+
+
+```{r, message=F, warning=F}
+h2o.varimp_plot(deepmodel)
+h2o.confusionMatrix(deepmodel)
+h2o.performance(deepmodel)@metrics$AUC #AUC Rate
+
+```
+
+Make prediction using test data:
+
+```{r, results='hide'}
+deep.pred = h2o.predict(deepmodel, newdata = test.1)
+```
+
+Calculate accuracy rate:
+
+```{r}
+Accuracy <- deep.pred$predict ==  test.1$salary_level                          
+                                                                           
+mean(Accuracy)                                                                              
+   
+plot(h2o.performance(deepmodel), type = "roc") 
+```
+
+
+The AUC rate is 92%, and ROC curve shows the model good fitting. The model is pretty good.
+
+Now I try some other models of deep learning with changing other parameters:
+
+   To keep it fast, I try to run for one ephoch (one pass over the training data).
+```{r, message=F, warning=F}
+system.time({
+m1       <- h2o.deeplearning(x = x
+                            ,y = y
+                            ,training_frame = train.1
+                            , validation_frame = valid.1
+                            #,standardize = T
+                            ,model_id = "m1"
+                            ,activation = "Rectifier"
+                            ,epochs = 1
+                            ,variable_importances = T)
+
+})
+
+```
+
+It takes only 8.9 seconds. 
+
+
+Early Stopping:
+
+stopping_metric:  use as stopping criterion
+stopping_tolerance and stopping_rounds: training stops when the the stopping metric does not improve by the stopping tolerance proportion any more for the number of consecutive rounds defined by stopping rounds.
+
+
+I run another, smaller network, and I let it stop automaticallt once the AUC rate converages. 
+
+```{r,, message=F, warning=F}
+system.time({
+m2       <- h2o.deeplearning(x = x
+                            ,y = y
+                            ,training_frame = train.1
+                            , validation_frame = valid.1
+                            ,standardize = T
+                            ,model_id = "m2"
+                            ,hidden = c(32,32,32)
+                            ,activation = "Rectifier"
+                            ,epochs = 100
+                            ,stopping_rounds = 2
+                            , stopping_metric = "AUC"
+                            , stopping_tolerance = 0
+                            ,variable_importances = T)
+
+})
+```
+
+It takes around 24 seconds.
+
+Tunning:
+
+With some tuning, it is possible to obtain the model with error rate of below 10% with large models. 
+
+Add input drop out ratio:
+```{r, message=F, warning=F}
+system.time({
+  m4 <-      h2o.deeplearning(x = x
+                            ,y = y
+                            ,training_frame = train.1
+                            , validation_frame = valid.1
+                            ,activation = "Rectifier"
+                            , hidden = c(50,50,50,50)
+                            , input_dropout_ratio = 0.2
+                            ,epochs = 100
+                            , stopping_rounds = 2
+                            , stopping_metric = "AUC"
+                            , stopping_tolerance = 0) 
+})
+h2o.performance(m4, test.1)@metrics$AUC
+
+```
+AUC rate is 91% with the running time of 32 seconds.
+
+
+Exclude input drop out ratio:
+
+```{r,, message=F, warning=F}
+system.time({
+  m5 <-     h2o.deeplearning(x = x
+                            ,y = y
+                            ,training_frame = train.1
+                            , validation_frame = valid.1
+                            ,activation = "Rectifier"
+                            , hidden = c(50,50,50,50)
+                            ,epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(m5, test.1)@metrics$AUC
+
+
+```
+
+AUC rate does not improve, and hence input drop out ratio does not impact heavily on the model.
+
+Change hidden layer:
+
+```{r, message=F, warning=F}
+
+system.time({
+  m6 <-     h2o.deeplearning(x = x
+                            ,y = y
+                            ,training_frame = train.1
+                            , validation_frame = valid.1
+                            ,activation = "Rectifier"
+                            ,hidden = c(20,20)
+                            , epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(m6, test.1)@metrics$AUC
+
+
+```
+
+With faster speed, this model has slightly lower AUC rate.
+
+Make hidden layer simple:
+
+```{r, message=F, warning=F}
+system.time({
+  m7 <-     h2o.deeplearning(x = x
+                            ,y = y
+                            ,training_frame = train.1
+                            , validation_frame = valid.1
+                            ,activation = "Rectifier", hidden = c(20),
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(m7, test.1)@metrics$AUC
+```
+With faster speed,  AUC rate has no improve. Hidden layer cannot be too simple for this data.
+
+Define hidden layer as 200, and add regularization l1 and l2 to the model. L1 lets only strong weights survive, while L2 prevents any single weight from getting too big:
+
+```{r, message=F, warning=F}
+system.time({
+  m9 <-     h2o.deeplearning(x = x
+                            ,y = y
+                            ,training_frame = train.1
+                            , validation_frame = valid.1
+                            ,activation = "Rectifier", hidden = c(200,200), l1 = 1e-5, l2 = 1e-5, 
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(m9, test.1)@metrics$AUC
+```
+
+With more time, AUC not improve.
+
+Drop regulartization, add adaptive rate as false (default is true):
+
+```{r, message=F, warning=F}
+system.time({
+  m10 <- h2o.deeplearning(x = x
+                            ,y = y
+                            ,training_frame = train.1
+                            , validation_frame = valid.1
+                            ,activation = "Rectifier", hidden = c(200,200), 
+            adaptive_rate = FALSE, ## default: rate = 0.005, rate_decay = 1, momentum_stable = 0,
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(m10, test.1)@metrics$AUC
+
+```
+
+With running time of 55 seconds, this model has the AUC rate of 90.86%. Then, I keep adaptive rate as false in following models.
+
+Add momentum:
+
+```{r, message=F, warning=F}
+system.time({
+  m11 <-h2o.deeplearning(x = x
+                            ,y = y
+                            ,training_frame = train.1
+                            , validation_frame = valid.1,
+            activation = "Rectifier", hidden = c(200,200), 
+            adaptive_rate = FALSE, rate = 0.001, momentum_start = 0.5, momentum_ramp = 1e5, momentum_stable = 0.99,
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(m11, test.1)@metrics$AUC
+
+```
+
+AUC rate does not improve.
+
+Change the rate from 0.001 to 0.01:
+```{r, message=F, warning=F}
+system.time({
+  m12 <- h2o.deeplearning(x = x
+                            ,y = y
+                            ,training_frame = train.1
+                            , validation_frame = valid.1,
+            activation = "Rectifier", hidden = c(200,200), 
+            adaptive_rate = FALSE, rate = 0.01, momentum_start = 0.5, momentum_ramp = 1e5, momentum_stable = 0.99,
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(m12, test.1)@metrics$AUC
+```
+
+This model's AUC rate improves to 91% which is better.
+
+```{r, message=F, warning=F}
+system.time({
+m3 <-       h2o.deeplearning(x = x
+                            ,y = y
+                            ,training_frame = train.1
+                            , validation_frame = valid.1
+                            ,standardize = T
+                            ,model_id = "dm_tuned"
+                            ,activation = "Rectifier"
+                            ,hidden = c(128,128,128)
+                           ,adaptive_rate = F
+                           ,rate = 0.01
+                           ,rate_annealing = 2e-6
+                           ,momentum_start = 0.2
+                           ,momentum_stable = 0.4
+                           ,momentum_ramp = 1e7
+                           ,l1=1e-5
+                           ,l2=1e-5
+                            ,epochs = 100
+                            ,stopping_rounds = 2
+                            , stopping_metric = "AUC"
+                            , stopping_tolerance = 0
+                            ,variable_importances = T)
+
+})
+```
+
+In this case, system costs around seconds with real time of 1 minute.
+
+```{r}
+h2o.performance(m1)@metrics$AUC
+h2o.performance(m2)@metrics$AUC
+h2o.performance(m3)@metrics$AUC
+```
+
+```{r, results='hide'}
+# Calculate performance measures at threshold that maximizes precision
+m1.pred = h2o.predict(m1, newdata = test.1)
+m2.pred = h2o.predict(m2, newdata = test.1)
+m3.pred = h2o.predict(m3, newdata = test.1)
+m4.pred = h2o.predict(m4, newdata = test.1)
+m5.pred = h2o.predict(m5, newdata = test.1)
+m6.pred = h2o.predict(m6, newdata = test.1)
+m7.pred = h2o.predict(m7, newdata = test.1)
+m9.pred = h2o.predict(m9, newdata = test.1)
+m10.pred = h2o.predict(m10, newdata = test.1)
+m11.pred = h2o.predict(m11, newdata = test.1)
+m12.pred = h2o.predict(m12, newdata = test.1)
+
+
+```
+
+Calculate accuracy rate:
+
+```{r}
+m1.a <- m1.pred$predict ==  test.1$salary_level
+m2.a <- m2.pred$predict ==  test.1$salary_level
+m3.a <- m3.pred$predict ==  test.1$salary_level
+m4.a <- m4.pred$predict ==  test.1$salary_level 
+m5.a <- m5.pred$predict ==  test.1$salary_level 
+m6.a <- m6.pred$predict ==  test.1$salary_level 
+m7.a <- m7.pred$predict ==  test.1$salary_level 
+m9.a <- m9.pred$predict ==  test.1$salary_level 
+m10.a <- m10.pred$predict ==  test.1$salary_level
+m11.a <- m11.pred$predict ==  test.1$salary_level
+m12.a <- m12.pred$predict ==  test.1$salary_level
+                                                                           
+mean(m1.a);mean(m2.a);mean(m3.a);mean(m4.a);mean(m5.a);mean(m6.a);mean(m7.a);mean(m9.a);mean(m10.a) ;mean(m11.a) ;mean(m12.a)
+```
+
+
+Compare these models, m3 model has highest AUC rate with lower error rate, which performs well. Thus, for Deep Learning, I pick m3 as the best model.
+
+#####Hyper-parameter Tuning with Grid Search
+
+Since there are a lot of parameters that can impact model accuracy, hyper-parameter tuning is especially important for Deep Learning.I use the simplest hyperparameter search method which is a brunte-force scan of the full Cartesian product of all combinations specified by a grid search.
+
+First, I set the hyper parameters.
+
+```{r}
+hyper_params <- list(
+  activation = c("Rectifier","Tanh","Maxout"),
+  epochs = c(10,50, 100 ),
+  hidden = list(c(128,128,128), c(200,200,200)),
+  rate = c(0.01, 0.001),
+  rate_annealing = c(1e-8, 2e-6),
+  momentum_start = c(0.2, 0.5),
+  momentum_stable = c(0.99, 0.4),
+  l1 = seq(0, 1e-4,1e-6),
+  l2 = seq(0, 1e-4, 1e-6))
+
+```
+
+Then, I define the search criteria.
+
+```{r}
+search_criteria = list(strategy = "RandomDiscrete",
+                       max_runtime_secs = 360,
+                       max_models = 100,
+                       seed = 1234567,
+                       stopping_rounds =5,
+                       stopping_metric = "AUC"
+              , stopping_tolerance = 0
+                       )
+```
+
+
+Now, I train the model with combinations of hyper-parameters from specified stopping criteria and hyper-parameter grid:
+
+```{r, message=F, warning=F}
+system.time({
+dl_random_grid <- h2o.grid(
+  algorithm = "deeplearning",
+  grid_id = "grid_random",
+  training_frame = train.1,
+  validation_frame = valid.1,
+  nfolds = 5,
+  x = x,y = y,
+  momentum_ramp = 1e7,
+  variable_importances = T,
+  adaptive_rate = F,
+  max_w2 = 10, #improve stability for Rectifier
+  hyper_params = hyper_params,
+  search_criteria = search_criteria
+)
+})
+```
+
+Pick up the best fitted model from defined function using h2o.getmodel:
+
+```{r, results='hide'}
+grid <- h2o.getGrid("grid_random", sort_by = "AUC",
+                    decreasing = FALSE)
+
+best_model <- h2o.getModel(grid@model_ids[[1]])
+```
+
+Then, I perform confusion matrix and pick the best regularization parameters:
+
+```{r}
+h2o.confusionMatrix(best_model, valid =T)
+best_params <- best_model@allparameters
+best_params$l1
+best_params$l2
+```
+
+
+Calculate the AUC rate and Accuracy rate:
+
+```{r}
+h2o.auc(h2o.performance(best_model, newdata = test.1))
+
+best.pred = h2o.predict(best_model, newdata = test.1)
+best.a <- best.pred$predict ==  test.1$salary_level 
+mean(best.a)
+```
+
+
+####Part2: hyperparameter optimization for GBM with random research
+
+ In the previous project, I tried hyperparameter search for GBM using XBOOST package, and this time I use h2o package with h2o.grid function to do random search.
+
+Most of the times, hyperparameter search for more than 4 parameters can be done more efficiently with random parameter search than with grid search. I simply build up to max_models models with parameters drawn randomly from user-specified distributions. In general, metric-based early stopping optionally combined with max runtime is the best choice. The number of models will take to converge toward a global best can vary a lot, and metric-based early stopping accounts for this automatically by stopping the search process when the error curve flattens out.
+
+First, construct a large Cartesian hyper-parameter space.
+
+```{r}
+ntrees_opts = c(1000)      
+max_depth_opts = seq(1,20)
+min_rows_opts = c(1,5,10,20,50,100)
+learn_rate_opts = seq(0.001,0.01,0.001)
+sample_rate_opts = seq(0.1,1,0.05)
+col_sample_rate_opts = seq(0.1,1,0.05)
+col_sample_rate_per_tree_opts = seq(0.1,1,0.05)
+nbins_cats_opts = seq(100,1000,100) 
+
+```
+
+List hyper parameters:
+```{r}
+hyper_params = list( ntrees = ntrees_opts, 
+                     max_depth = max_depth_opts, 
+                     min_rows = min_rows_opts, 
+                     learn_rate = learn_rate_opts,
+                     sample_rate = sample_rate_opts,
+                     col_sample_rate = col_sample_rate_opts,
+                     col_sample_rate_per_tree = col_sample_rate_per_tree_opts
+                     ,nbins_cats = nbins_cats_opts
+)
+```
+
+Then, search a random subset of these hyper-parameters.
+
+```{r}
+search_criteria = list(strategy = "RandomDiscrete", 
+                       max_runtime_secs = 600, 
+                       max_models = 100, 
+                       stopping_metric = "AUC", 
+                       stopping_tolerance = 0.00001, 
+                       stopping_rounds = 3, 
+                       seed = 123456)
+```
+
+Now I train the model with combinations of hyper-parameters:
+
+```{r, results= 'hide'}
+#set variables
+y <- "salary_level"
+x <- setdiff(colnames(train.1),y)
+
+system.time({
+gbm_grid <- h2o.grid("gbm", 
+                     grid_id = "mygrid",
+                       training_frame = train.1,
+                     validation_frame = valid.1,
+                      x = x,y = y,
+                      nfolds = 5,
+                     distribution = "bernoulli",
+                     stopping_rounds = 2,
+                     stopping_tolerance = 1e-3,
+                     stopping_metric = "AUC",
+                     score_tree_interval = 100, 
+                     seed = 123456,
+                     hyper_params = hyper_params,
+                     search_criteria = search_criteria)
+})
+
+```
+
+Time is over 600 seconds.
+
+```{r}
+gbm_sorted_grid <- h2o.getGrid(grid_id = "mygrid", sort_by = "AUC")
+
+best_model <- h2o.getModel(gbm_sorted_grid@model_ids[[1]])
+
+h2o.auc(h2o.performance(best_model, newdata = test.1))
+
+best.pred = h2o.predict(best_model, newdata = test.1)
+best.a <- best.pred$predict ==  test.1$salary_level 
+mean(best.a)
+
+#h2o.shutdown(prompt=FALSE)
+```
+
+AUC rate is about 91%, and the accuracy rate is 84.3%
+
+####Part3: Support Vector Machine
+
+  The Support Vector Machine constructs set of hyperplanes in a high dimensional space, which can be used for classification. Intuitively, a good separation is achieved by the hyperplane that has the largest distance to the nearest training- data point of any class, since in general the larger the margin the lower the generalization error of the classifier.
+
+In order to train the model with SVM, I use e1071 package. I want my train and test data to be sparse matrix with same number of columns, and I use rbind function to combine the data, transform to matrix, and then seperate the data with same row numbers.
+
+```{r, message=F, warning=F}
+library(e1071) 
+library(pROC)
+library(ROCR)
+test = read.csv("~/Desktop/test.csv")
+train = read.csv("~/Desktop/train.csv")
+
+x = rbind(train,test)
+X <- Matrix::sparse.model.matrix(salary_level ~ . -1, data = x)
+
+X_train <- X[1:27133,] #original train data of sparse model matrix
+X_test <- X[-c(1:27133),] # original test data of sparse model matrix
+
+system.time({
+  md <- svm(x = X_train, y = as.factor(train$salary_level), probability= TRUE)
+})
+```
+The real time costs more than 5 minutes.
+
+Then, apply this model to test data and calculate AUC and accuracy rate:
+
+```{r}
+
+phat <- attr(predict(md, newdata = X_test, probability = TRUE), "probabilities")[,2]
+p= predict(md, newdata = X_test, probability = TRUE)
+
+rocr_pred <- prediction(phat, test$salary_level)
+performance(rocr_pred, "auc")@y.values[[1]]
+
+
+perf = performance(rocr_pred ,"tpr","fpr")
+plot(perf,col=2,lwd=2)
+
+```
+
+The ROC plot has the line close to top left.
+
+```{r}
+caret::confusionMatrix(test$salary_level, predict(md, newdata = X_test, probability = TRUE))
+```
+
+
+From the result, this model has the accuracy rate of 86%, AUC rate is around 90%.
+
+###Part4:  K-Nearest Neighbor
+
+KNN stands for K-Nearest Neighbor algorithm it makes use of Euclidean distance to calculate distance of points from existing data points.
+
+Since KNN requires all numeric fields except the dependent variable I convert the independent variables into numeric wherever required as following:
+
+```{r}
+library(class)
+train.2 = train
+test.2 = test
+features = names(train.2)
+for (f in features) {
+  if (class(train.2[[f]])=="factor") {
+    levels <- unique(train.2[[f]])
+    train.2[[f]] <- as.numeric(as.integer(factor(train.2[[f]], levels=levels)))
+  }
+}
+
+for (f in features) {
+  if (class(test.2[[f]])=="factor") {
+    levels <- unique(test.2[[f]])
+    test.2[[f]] <- as.numeric(as.integer(factor(test.2[[f]], levels=levels)))
+  }
+}
+
+```
+
+Then, I apply KNN function in class package to train the model.
+
+```{r}
+
+system.time({
+knn_pred<-knn(train.2[,-13],test.2[,-13],train.2[,13],9)
+})
+
+```
+
+The real time cost 8.5 seconds which is very fast.
+
+```{r}
+caret::confusionMatrix(test.2[,13], knn_pred, mode = "prec_recall")
+
+pred.2 <- prediction(as.numeric(knn_pred), as.numeric(test[,13]))
+performance(pred.2, "auc")@y.values[[1]]
+```
+
+Model accuracy rate is 81%, and AUC is 70%.
+
+###Part5: Model Compare and Conclusion
+
+In this project, I use H2O package for deep learning and GBM. H2O contains good default values for many datasets, but to get the best performance, it is better to tune some hyperparameters to maximize the predictive performance. For Hyper Parameter Optimization, I try both grid search and random search. Grid search is searching through a manually specified subset of the hyperparameter space of a learning algorithm, and it must be guided by some performance metric. Therefore, grid search is potentially expensive method, while randomized search is more effective in high-dimensional spaces. Random search becomes more efficient method for training the model. 
+
+Moreover, I try SVM and KNN method. KNN is fast in speed, but low predictive performance. KNN is a supervised lazy classifier, making it difficult to use for prediction in real time. When solving a problem that find similarity between observations, KNN can be better. KNN is most likely to overfit, and hence adjusting number of k to maximise test set performance is a cost.
+
+SVM is slow in speed, and medium predictive performance compared to H2o package. SVM efficiently performs non-linear classification, implicitly mapping inputs into high-dimensional feature spaces. With fewer hyperparameters, training a model can be easier but time needed.
+
+Random Forest is a traditional learning method. Random Forests train each tree independently, and thus the model becomes more robust, and less likely to overfit on the training data. Additionally, Random Forest is much easier to train since it has two tuning parameters mtry and ntrees. However, time cost is heavy to train the model. Thus, random forest will be a good choice of simple data.
+
+Xgboost is used in last project. Unlike Random Forests, xgboost can’t simply build the trees in parallel but builds the tree itself in a parallel order. xgboost has faster training speed with higher efficiency, and also guarantee the better accuracy with parallel learning supported. Moreover, xgboost is capable of handling large-scale data. When training a model with high dimensional data, random forest has slower speed and lower predictive performance than xgboost.
+
+  Combined with the models from previous project, model with H2o package such as deep learning and hyper parameter optimization performs well on adult data, but not time efficient. Among hyper parameter optimization, random search is a good method for high scale data but both hyper parameter serach are expensive to run. Compared all the models, the best performer is xgboost with hyperparameter tuning not only because fast speed with high prediction accuracy, but also because less cost needed. If looking for speed and dealing with structured data, xgboost is a must.
+
+
+
+Model                               | Accuracy  | AUC       | user   | system | elapsed
+----------------------------------- | --------- | --------- | ------ | ------ | --------
+Logistic Regression                 | 83.18%    | 89.06%    | 4.59   | 0.04   | 4.69 
+Random Forest                       | 81.68%    | 86.67%    | 92.29  | 3.83   | 98.98
+XGBOOST                             | 86.37%    | 92.45%    | 3.95   | 0.04   | 4.03
+XGBOOST Hyper Parameter             | 86.55%    | 92.55%    | 31.23  | 0.11   | 31.51
+SVM                                 | 86.09%    | 88.89%    | 301.25 | 1.51   | 305.46
+KNN                                 | 81.41%    | 70.38%    | 8.15   | 0.09   | 8.54
+Deep Learning                       | 84.09%    | 92.33%    | 0.77   |0.036   | 52.91
+Hyper Parameter DL Grid Search      | 83.37%    | 90.86%    | 3.58   | 0.23   | 381.92
+Hyper Parameter GBM Random Search   | 84.96%    | 91.65%    | 9.08   | 1.59   | 609.61
+
+
